@@ -5,7 +5,7 @@
 # License: BSD 3 clause
 
 import numpy as np
-
+import time
 from mlrose.algorithms.decorators import short_name
 
 
@@ -81,6 +81,7 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
     best_state = None
 
     best_fitness_curve = []
+    best_fitness_curve_times = []
 
     continue_iterating = True
     for current_restart in range(restarts + 1):
@@ -90,7 +91,8 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
         else:
             problem.set_state(init_state)
 
-        fitness_curve = []
+        fitness_curve = [0]
+        fitness_curve_times = [0]
         callback_extra_data = None
         if state_fitness_callback is not None:
             callback_extra_data = callback_user_info + [('current_restart', current_restart)]
@@ -102,6 +104,7 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
 
         attempts = 0
         iters = 0
+        start_time = time.time_ns()
         while (attempts < max_attempts) and (iters < max_iters):
             iters += 1
 
@@ -120,6 +123,8 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
 
             if curve:
                 fitness_curve.append(problem.get_adjusted_fitness())
+                fitness_curve_times.append(
+                    time.time_ns()-start_time)
 
             # invoke callback
             if state_fitness_callback is not None:
@@ -142,12 +147,13 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
             best_state = problem.get_state()
             if curve:
                 best_fitness_curve = [*fitness_curve]
+                best_fitness_curve_times = [*fitness_curve_times]
 
         # break out if requested
         if not continue_iterating:
             break
     best_fitness *= problem.get_maximize()
     if curve:
-        return best_state, best_fitness, np.asarray(best_fitness_curve)
+        return best_state, best_fitness, np.asarray(best_fitness_curve), np.asarray(best_fitness_curve_times)
 
-    return best_state, best_fitness, None
+    return best_state, best_fitness, None, None

@@ -5,7 +5,7 @@
 # License: BSD 3 clause
 
 import numpy as np
-
+import time
 from mlrose.algorithms.decay import GeomDecay
 from mlrose.algorithms.decorators import short_name
 
@@ -88,12 +88,13 @@ def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
                                fitness=problem.get_adjusted_fitness(),
                                user_data=callback_user_info)
 
-    fitness_curve = []
+    fitness_curve = [0]
+    fitness_curve_times = [0]
 
     attempts = 0
     iters = 0
     continue_iterating = True
-
+    start_time = time.time_ns()
     while (attempts < max_attempts) and (iters < max_iters):
         temp = schedule.evaluate(iters)
         iters += 1
@@ -120,6 +121,9 @@ def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
 
         if curve:
             fitness_curve.append(problem.get_adjusted_fitness())
+            fitness_curve_times.append(
+                time.time_ns()-start_time)
+
 
         # invoke callback
         if state_fitness_callback is not None:
@@ -140,6 +144,6 @@ def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
     best_state = problem.get_state()
 
     if curve:
-        return best_state, best_fitness, np.asarray(fitness_curve)
+        return best_state, best_fitness, np.asarray(fitness_curve), np.asarray(fitness_curve_times)
 
-    return best_state, best_fitness, None
+    return best_state, best_fitness, None, None
