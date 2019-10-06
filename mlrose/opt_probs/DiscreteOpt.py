@@ -36,6 +36,7 @@ class DiscreteOpt(_OptProb):
 
     def __init__(self, length, fitness_fn, maximize=True, max_val=2,
                  crossover=None, mutator=None):
+        self._get_mutual_info_impl = self._get_mutual_info_slow
 
         _OptProb.__init__(self, length, fitness_fn, maximize)
 
@@ -65,14 +66,18 @@ class DiscreteOpt(_OptProb):
         self._crossover = UniformCrossOver(self) if crossover is None else crossover
         self._mutator = SwapMutator(self) if mutator is None else mutator
 
+        self._mut_mask = None
+        self._mut_inf = None
+
     def eval_node_probs(self):
         """Update probability density estimates.
         """
         # Create mutual info matrix
-        mutual_info = self.get_mutual_info_slow()
+        mutual_info = self._get_mutual_info_impl()
 
         # Find minimum spanning tree of mutual info matrix
-        mst = minimum_spanning_tree(csr_matrix(mutual_info))
+        csr_mx = csr_matrix(mutual_info)
+        mst = minimum_spanning_tree(csr_mx)
 
         # Convert minimum spanning tree to depth first tree with node 0 as root
         dft = depth_first_tree(csr_matrix(mst.toarray()), 0, directed=False)
@@ -104,7 +109,24 @@ class DiscreteOpt(_OptProb):
         self.node_probs = probs
         self.parent_nodes = parent
 
-    def get_mutual_info_slow(self):
+    def set_mimic_fast_mode(self, fast_mode):
+        if fast_mode:
+            mut_mask = np.zeros([self.length, self.length], dtype=bool)
+            for i in range(0, self.length):
+                for j in range(i, self.length):
+                    mut_mask[i, j] = True
+            mut_mask = mut_mask.reshape((self.length * self.length))
+            self._mut_mask = mut_mask
+            # Set ignore error to ignore dividing by zero
+            np.seterr(divide='ignore', invalid='ignore')
+            self._get_mutual_info_impl = self._get_mutual_info_fast
+            self._mut_inf = np.zeros([self.length * self.length])
+        else:
+            self._mut_mask = None
+            self._get_mutual_info_impl = self._get_mutual_info_slow
+            self._mut_inf = None
+
+    def _get_mutual_info_slow(self):
         mutual_info = np.zeros([self.length, self.length])
         for i in range(self.length - 1):
             for j in range(i + 1, self.length):
@@ -113,9 +135,13 @@ class DiscreteOpt(_OptProb):
                     self.keep_sample[:, j])
         return mutual_info
 
-    def get_mutual_info_fast(self):
-        # Set ignore error to ignore dividing by zero
-        np.seterr(divide='ignore', invalid='ignore')
+    # adapted from https://github.com/parkds/mlrose/blob/f7154a1d3e3fdcd934bb3c683b943264d2870fd1/mlrose/algorithms.py
+    # (thanks to David Sejin Park)
+    def _get_mutual_info_fast(self):
+        if self._mut_inf is None:
+            # restore sanity
+            self._get_mutual_info_impl = self._get_mutual_info_slow
+            return self._get_mutual_info_impl()
 
         # get length of the sample which survived from mimic iteration
         len_sample_kept = self.keep_sample.shape[0]
@@ -126,11 +152,12 @@ class DiscreteOpt(_OptProb):
         b = np.repeat(self.keep_sample, self.length).reshape(len_sample_kept, len_prob * len_prob)
         d = np.hstack(([self.keep_sample] * len_prob))
 
-        # Compute the mutual information matrix in bulk, by iterating through the list of possible feature values ((max_val-1)^2).
+        # Compute the mutual information matrix in bulk, by iterating through the list of
+        # possible feature values ((max_val-1)^2).
         # For example, a binary string would go through 00 01 10 11, for a total of 4 iterations.
 
         # First initialize the mutual info matrix.
-        mut_inf = np.zeros([self.length * self.length])
+        self._mut_inf.fill(0)
         # Pre-compute the U and V which gets computed multiple times in the inner loop.
         U = {}
         V = {}
@@ -142,7 +169,8 @@ class DiscreteOpt(_OptProb):
             U_sum[i] = np.sum(d == i, axis=0)
             V_sum[i] = np.sum(b == i, axis=0)
 
-        # Compute the mutual information for all sample to sample combination for each feature combination ((max_val-1)^2)
+        # Compute the mutual information for all sample to sample combination for each feature combination
+        # ((max_val-1)^2)
         for i in range(0, self.max_val):
             for j in range(0, self.max_val):
                 # This corresponds to U and V of mutual info matrix, for this feature pair
@@ -151,21 +179,25 @@ class DiscreteOpt(_OptProb):
                 UV_length = (U_sum[i] * V_sum[j])
 
                 # compute the second term of the MI matrix
-                temp = np.log(np.divide(coeff * len_sample_kept, UV_length))
+                temp = np.log(coeff) - np.log(UV_length) + np.log(len_sample_kept)
                 # remove the nans and negative infinity
                 temp[np.isnan(temp)] = 0
                 temp[np.isneginf(temp)] = 0
 
                 # combine the first and the second term, divide by the length N.
                 # Add the whole MI matrix for the feature to the previously computed values
-                mut_inf = mut_inf + np.divide(coeff * temp, len_sample_kept)
+                div = temp * np.divide(coeff, len_sample_kept)
+                div[self._mut_mask] = 0
+                self._mut_inf += div
 
         # Need to multiply by negative to get the mutual information
-        mut_inf = -mut_inf.reshape(self.length, self.length)
+        self._mut_inf = -self._mut_inf.reshape(self.length, self.length)
         # Only get the upper triangle matrix above the identity row.
-        # Possible enhancements, currently we are doing dobule the computation required.
-        # Pre set the matrix so the compuation is only done for rows that are needed. To do for the future.
-        mutual_info = np.triu(mut_inf, k=1)
+        # Possible enhancements, currently we are doing double the computation required.
+        # Pre set the matrix so the computation is only done for rows that are needed. To do for the future.
+
+        mutual_info = self._mut_inf.T
+        self._mut_inf = self._mut_inf.reshape(self.length * self.length)
         return mutual_info
 
     def find_neighbors(self):
