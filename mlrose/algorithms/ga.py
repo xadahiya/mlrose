@@ -141,8 +141,8 @@ def genetic_alg(problem, pop_size=200, pop_breed_percent=0.75, elite_dreg_ratio=
     if isinstance(random_state, int) and random_state > 0:
         np.random.seed(random_state)
 
-    fitness_curve = [0]
-    fitness_curve_times = [0]
+    fitness_curve = []
+    fitness_curve_times = []
 
     # Initialize problem, population and attempts counter
     problem.reset()

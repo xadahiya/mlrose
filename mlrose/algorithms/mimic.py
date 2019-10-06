@@ -86,8 +86,8 @@ def mimic(problem, pop_size=200, keep_pct=0.2, max_attempts=10,
     if isinstance(random_state, int) and random_state > 0:
         np.random.seed(random_state)
 
-    fitness_curve = [0]
-    fitness_curve_times = [0]
+    fitness_curve = []
+    fitness_curve_times = []
 
     # Initialize problem, population and attempts counter
     problem.reset()

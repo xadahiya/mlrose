@@ -88,8 +88,8 @@ def simulated_annealing(problem, schedule=GeomDecay(), max_attempts=10,
                                fitness=problem.get_adjusted_fitness(),
                                user_data=callback_user_info)
 
-    fitness_curve = [0]
-    fitness_curve_times = [0]
+    fitness_curve = []
+    fitness_curve_times = []
 
     attempts = 0
     iters = 0

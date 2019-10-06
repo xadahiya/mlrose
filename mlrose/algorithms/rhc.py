@@ -91,8 +91,8 @@ def random_hill_climb(problem, max_attempts=10, max_iters=np.inf, restarts=0,
         else:
             problem.set_state(init_state)
 
-        fitness_curve = [0]
-        fitness_curve_times = [0]
+        fitness_curve = []
+        fitness_curve_times = []
         callback_extra_data = None
         if state_fitness_callback is not None:
             callback_extra_data = callback_user_info + [('current_restart', current_restart)]
